@@ -5,11 +5,9 @@ on:
     # 21:30 UTC = 미 동부 기준 대략 장 마감 후 (평일만)
     - cron: "30 21 * * 1-5"
   workflow_dispatch:
-  push:
-    branches:
-      - claude/us-stock-investment-ai-f35k6j
-    paths:
-      - ".github/workflows/daily-predict.yml"
+  # 주의: 이 워크플로우 파일 자체를 건드리는 push 트리거는 일부러 넣지 않았다.
+  # (한때 등록용으로 있었는데, 파일을 수정할 때마다 동시에 두 번 실행돼서
+  # predictions.csv에 레이스 컨디션을 일으켰다 — workflow_dispatch로 수동 등록/테스트하면 된다.)
 
 permissions:
   contents: write
@@ -49,7 +47,7 @@ jobs:
             fi
             echo "push rejected (likely a race with another workflow), rebasing and retrying ($i)..."
             git fetch origin claude/us-stock-investment-ai-f35k6j
-            git rebase origin/claude/us-stock-investment-ai-f35k6j
+            git rebase origin/claude/us-stock-investment-ai-f35k6j || git rebase --abort
             sleep $((i * 3))
           done
           echo "::error::failed to push after retries"

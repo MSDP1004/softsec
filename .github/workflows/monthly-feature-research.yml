@@ -4,11 +4,7 @@ on:
   schedule:
     - cron: "0 6 1 * *" # 매월 1일 06:00 UTC
   workflow_dispatch:
-  push:
-    branches:
-      - claude/us-stock-investment-ai-f35k6j
-    paths:
-      - ".github/workflows/monthly-feature-research.yml"
+  # 주의: daily-predict.yml과 같은 이유로 self-path push 트리거는 넣지 않았다.
 
 permissions:
   contents: write
@@ -59,7 +55,7 @@ jobs:
             fi
             echo "push rejected (likely a race with another workflow), rebasing and retrying ($i)..."
             git fetch origin claude/us-stock-investment-ai-f35k6j
-            git rebase origin/claude/us-stock-investment-ai-f35k6j
+            git rebase origin/claude/us-stock-investment-ai-f35k6j || git rebase --abort
             sleep $((i * 3))
           done
           echo "::error::failed to push after retries"
