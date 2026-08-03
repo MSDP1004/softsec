@@ -55,7 +55,7 @@ nodes:
   - id: networking_connectivity
     name: "네트워킹 & 연결성"
     stage: midstream
-    tickers: [CSCO, ANET, JNPR, CIEN]
+    tickers: [CSCO, ANET, CIEN]
 
   - id: robotics_automation
     name: "로보틱스 & 자동화"
