@@ -41,6 +41,7 @@ class DailyResult:
     n_evaluated: int
     calibrated_horizons: list[str]
     eval_summary: dict[str, dict] = field(default_factory=dict)
+    active_features: dict[str, list[str]] = field(default_factory=dict)
 
 
 def run_daily(
@@ -119,12 +120,18 @@ def run_daily(
 
     save_weights(model, weights_path)
 
+    active_features = {
+        horizon: model.meta[horizon].get("active_features", [])
+        for horizon in calibrated_horizons
+    }
+
     result = DailyResult(
         n_tracked=len(tracked),
         n_predictions_logged=len(new_predictions),
         n_evaluated=len(evals),
         calibrated_horizons=calibrated_horizons,
         eval_summary=eval_summary,
+        active_features=active_features,
     )
     write_summary(result, today, summary_path)
     return result
@@ -152,6 +159,14 @@ def write_summary(result: DailyResult, today: date, summary_path: Path) -> None:
         else:
             lines.append(f"| {horizon} | 0 | - | - | {min_n} |")
     lines.append("")
+
+    if result.active_features:
+        lines.append("## Elastic Net이 유지한 피처 (재적합된 horizon만)")
+        lines.append("")
+        for horizon, features in result.active_features.items():
+            shown = ", ".join(features) if features else "(전부 0으로 축소됨 — 유의미한 피처 없음)"
+            lines.append(f"- {horizon}: {shown}")
+        lines.append("")
     lines.append(
         "> 방향 적중률은 예측 부호(오를지/내릴지)와 실제 부호가 일치한 비율입니다. "
         "표본이 최소 기준 미만인 horizon은 아직 가중치가 재적합되지 않은 상태(초기값)입니다."
