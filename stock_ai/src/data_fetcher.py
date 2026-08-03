@@ -18,6 +18,7 @@ class TickerSnapshot:
     revenue_growth: float | None
     return_on_equity: float | None
     market_cap: float | None
+    price: float | None = None
 
 
 def fetch_snapshot(ticker: str) -> TickerSnapshot | None:
@@ -44,6 +45,7 @@ def fetch_snapshot(ticker: str) -> TickerSnapshot | None:
         revenue_growth=info.get("revenueGrowth"),
         return_on_equity=info.get("returnOnEquity"),
         market_cap=info.get("marketCap"),
+        price=info.get("currentPrice") or info.get("regularMarketPrice"),
     )
 
 

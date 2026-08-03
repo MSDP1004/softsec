@@ -1,0 +1,154 @@
+"""매일 실행되는 오케스트레이션: 예측 기록 -> 만기 예측 평가 -> (표본 충분하면) 가중치 재적합 -> 요약 생성."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
+
+from .backtest import (
+    append_evaluations,
+    append_predictions,
+    build_predictions,
+    evaluate_predictions,
+    find_matured_predictions,
+    read_csv_rows,
+)
+from .calibration import calibrate_horizon
+from .data_fetcher import fetch_snapshots
+from .predictor import HORIZONS, feature_vector, load_weights, save_weights
+from .quality_filter import QualityThresholds, filter_snapshots
+from .taxonomy_manager import load_taxonomy
+from .universe import select_top_n_per_node
+from .valuation import compute_node_valuation, score_undervaluation
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+TAXONOMY_PATH = BASE_DIR / "config" / "taxonomy.yaml"
+WEIGHTS_PATH = BASE_DIR / "config" / "model_weights.json"
+PREDICTIONS_PATH = BASE_DIR / "data" / "predictions.csv"
+EVALUATIONS_PATH = BASE_DIR / "data" / "evaluations.csv"
+SUMMARY_PATH = BASE_DIR / "data" / "daily_summary.md"
+
+# horizon별 재적합 최소 표본 수. 1일/1주는 노이즈가 커서 표본을 더 많이 요구한다.
+MIN_SAMPLES = {"1d": 30, "1w": 20, "1m": 15, "1y": 10}
+
+
+@dataclass
+class DailyResult:
+    n_tracked: int
+    n_predictions_logged: int
+    n_evaluated: int
+    calibrated_horizons: list[str]
+    eval_summary: dict[str, dict] = field(default_factory=dict)
+
+
+def run_daily(
+    today: date | None = None,
+    top_n_per_node: int = 2,
+    taxonomy_path: Path = TAXONOMY_PATH,
+    weights_path: Path = WEIGHTS_PATH,
+    predictions_path: Path = PREDICTIONS_PATH,
+    evaluations_path: Path = EVALUATIONS_PATH,
+    summary_path: Path = SUMMARY_PATH,
+) -> DailyResult:
+    today = today or date.today()
+
+    taxonomy = load_taxonomy(taxonomy_path)
+    thresholds = QualityThresholds()
+
+    node_valuations = []
+    quality_by_node = {}
+    for node in taxonomy.nodes:
+        snapshots = fetch_snapshots(node.tickers)
+        node_valuations.append(compute_node_valuation(node.id, node.name, snapshots))
+        quality_by_node[node.id] = filter_snapshots(snapshots, thresholds)
+    node_valuations = score_undervaluation(node_valuations)
+
+    tracked = select_top_n_per_node(node_valuations, quality_by_node, top_n=top_n_per_node)
+
+    model = load_weights(weights_path)
+
+    new_predictions = []
+    for t in tracked:
+        if t.snapshot.price is None:
+            continue
+        features = feature_vector(
+            t.node_valuation.undervaluation_score if t.node_valuation else None,
+            t.snapshot.revenue_growth,
+            t.snapshot.profit_margin,
+            t.snapshot.peg_ratio,
+        )
+        new_predictions.extend(
+            build_predictions(today, t.ticker, t.node_id, t.snapshot.price, features, model)
+        )
+    append_predictions(new_predictions, predictions_path)
+
+    matured = find_matured_predictions(predictions_path, evaluations_path, today)
+    matured_tickers = sorted({row["ticker"] for row in matured})
+    current_snapshots = fetch_snapshots(matured_tickers) if matured_tickers else {}
+    current_prices = {tkr: snap.price for tkr, snap in current_snapshots.items() if snap.price is not None}
+    evals = evaluate_predictions(matured, current_prices)
+    append_evaluations(evals, evaluations_path)
+
+    calibrated_horizons = []
+    eval_summary: dict[str, dict] = {}
+    all_evals = read_csv_rows(evaluations_path)
+    for horizon in HORIZONS:
+        rows = [r for r in all_evals if r["horizon"] == horizon]
+        if rows:
+            errors = [float(r["error"]) for r in rows]
+            realized = [float(r["realized_return"]) for r in rows]
+            predicted = [float(r["predicted_return"]) for r in rows]
+            hits = sum(1 for p, r in zip(predicted, realized) if (p >= 0) == (r >= 0))
+            eval_summary[horizon] = {
+                "n": len(rows),
+                "mae": sum(abs(e) for e in errors) / len(errors),
+                "direction_hit_rate": hits / len(rows),
+            }
+        if len(rows) >= MIN_SAMPLES[horizon]:
+            features = [[float(r["x1"]), float(r["x2"]), float(r["x3"]), float(r["x4"])] for r in rows]
+            targets = [float(r["realized_return"]) for r in rows]
+            if calibrate_horizon(model, horizon, features, targets, min_samples=MIN_SAMPLES[horizon]):
+                calibrated_horizons.append(horizon)
+
+    save_weights(model, weights_path)
+
+    result = DailyResult(
+        n_tracked=len(tracked),
+        n_predictions_logged=len(new_predictions),
+        n_evaluated=len(evals),
+        calibrated_horizons=calibrated_horizons,
+        eval_summary=eval_summary,
+    )
+    write_summary(result, today, summary_path)
+    return result
+
+
+def write_summary(result: DailyResult, today: date, summary_path: Path) -> None:
+    lines = [f"# 일일 예측/평가 요약 ({today.isoformat()})", ""]
+    lines.append(f"- 추적 종목: {result.n_tracked}개")
+    lines.append(f"- 오늘 새로 기록한 예측: {result.n_predictions_logged}건")
+    lines.append(f"- 오늘 만기 도달해 평가된 예측: {result.n_evaluated}건")
+    if result.calibrated_horizons:
+        lines.append(f"- 가중치 재적합됨: {', '.join(result.calibrated_horizons)}")
+    else:
+        lines.append("- 가중치 재적합: 없음 (표본 부족)")
+    lines.append("")
+    lines.append("| horizon | 누적 평가 표본 | MAE(오차) | 방향 적중률 | 최소표본 |")
+    lines.append("|---|---|---|---|---|")
+    for horizon in HORIZONS:
+        s = result.eval_summary.get(horizon)
+        min_n = MIN_SAMPLES[horizon]
+        if s:
+            lines.append(
+                f"| {horizon} | {s['n']} | {s['mae'] * 100:.2f}%p | {s['direction_hit_rate'] * 100:.0f}% | {min_n} |"
+            )
+        else:
+            lines.append(f"| {horizon} | 0 | - | - | {min_n} |")
+    lines.append("")
+    lines.append(
+        "> 방향 적중률은 예측 부호(오를지/내릴지)와 실제 부호가 일치한 비율입니다. "
+        "표본이 최소 기준 미만인 horizon은 아직 가중치가 재적합되지 않은 상태(초기값)입니다."
+    )
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text("\n".join(lines), encoding="utf-8")
