@@ -1,0 +1,28 @@
+name: Verify Stock AI Pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/us-stock-investment-ai-f35k6j
+    paths:
+      - "stock_ai/**"
+      - ".github/workflows/verify-stock-ai.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stock_ai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run offline unit/integration tests
+        run: python -m pytest tests/ -v
+      - name: Run pipeline against live yfinance data
+        run: python main.py run

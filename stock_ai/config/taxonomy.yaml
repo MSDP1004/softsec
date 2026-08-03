@@ -1,0 +1,69 @@
+# AI/기술 밸류체인 taxonomy (seed)
+#
+# 각 노드는 밸류체인 상의 한 구간(segment)을 나타내고, tickers는 해당 구간의
+# 대표 상장 기업(미국 상장 기준, ADR 포함)을 나열한다.
+#
+# 이 파일은 고정된 목록이 아니라 지속적으로 갱신되는 대상이다.
+# `python main.py update-taxonomy` 실행 시 LLM이 최근 유망 섹터를 조사해
+# 노드/티커를 추가하거나, 더 이상 유효하지 않은 항목을 제거 후보로 제안한다.
+# 자동 반영은 하지 않으며, 변경 제안은 review 필드에 기록되고 사람이 최종 승인한다.
+
+version: 1
+last_updated: "2026-08-03"
+
+nodes:
+  - id: semiconductor_equipment
+    name: "반도체 장비"
+    stage: upstream
+    tickers: [ASML, AMAT, LRCX, KLAC, TER, ICHR]
+
+  - id: foundry_memory
+    name: "파운드리 & 메모리"
+    stage: upstream
+    tickers: [TSM, MU, TXN, ON, SWKS, QRVO]
+
+  - id: ai_chips_accelerators
+    name: "AI 칩 & 가속기"
+    stage: midstream
+    tickers: [NVDA, AMD, AVGO, MRVL, QCOM, ADI]
+
+  - id: servers_hardware
+    name: "서버 & 데이터센터 하드웨어"
+    stage: midstream
+    tickers: [SMCI, DELL, HPE, ANET, CSCO, NTAP]
+
+  - id: cloud_infrastructure
+    name: "클라우드 인프라"
+    stage: midstream
+    tickers: [MSFT, AMZN, GOOGL, ORCL, IBM]
+
+  - id: ai_software_models
+    name: "AI 모델 & 소프트웨어 플랫폼"
+    stage: downstream
+    tickers: [MSFT, GOOGL, META, ADBE, PLTR]
+
+  - id: enterprise_saas
+    name: "엔터프라이즈 SaaS"
+    stage: downstream
+    tickers: [CRM, NOW, WDAY, INTU, SNOW]
+
+  - id: cybersecurity
+    name: "사이버보안"
+    stage: downstream
+    tickers: [PANW, CRWD, FTNT, ZS, CHKP]
+
+  - id: networking_connectivity
+    name: "네트워킹 & 연결성"
+    stage: midstream
+    tickers: [CSCO, ANET, CIEN]
+
+  - id: robotics_automation
+    name: "로보틱스 & 자동화"
+    stage: downstream
+    tickers: [ISRG, ROK, TER, FANUY]
+
+# LLM 기반 taxonomy 갱신 제안 이력 (update-taxonomy 실행 시 누적)
+review:
+  pending_additions: []
+  pending_removals: []
+  history: []

@@ -1,0 +1,16 @@
+candidates:
+- id: analyst_upside
+  name: 애널리스트 목표주가 상승여력
+  description: targetMeanPrice / 현재가 - 1
+  rationale: 애널리스트 추정치 개정(analyst revisions) 관련 팩터는 퀀트 문헌에서 꾸준히 다뤄지는 신호.
+  status: shadow
+  source: seed
+  proposed_date: '2026-08-03'
+- id: week52_position
+  name: 52주 고저 구간 내 위치
+  description: (현재가 - 52주최저) / (52주최고 - 52주최저)
+  rationale: 52-week high 근처 종목이 추가 상승하는 경향(George & Hwang 2004, 52-week high momentum).
+  status: shadow
+  source: seed
+  proposed_date: '2026-08-03'
+research_history: []
