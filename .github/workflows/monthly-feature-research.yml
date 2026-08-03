@@ -1,0 +1,54 @@
+name: Monthly Feature Research
+
+on:
+  schedule:
+    - cron: "0 6 1 * *" # 매월 1일 06:00 UTC
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/us-stock-investment-ai-f35k6j
+    paths:
+      - ".github/workflows/monthly-feature-research.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stock_ai
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/us-stock-investment-ai-f35k6j
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Research new candidate features (LLM, needs ANTHROPIC_API_KEY secret)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY repo secret is not set - skipping LLM research step."
+            echo "(Set it in repo Settings > Secrets and variables > Actions to enable this step.)"
+          else
+            python main.py research-features
+          fi
+
+      - name: Evaluate shadow features (pure statistics, no API key needed)
+        run: python main.py evaluate-shadow-features
+
+      - name: Commit updated candidate features
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add config/candidate_features.yaml
+          git diff --cached --quiet || git commit -m "Monthly feature research/evaluation update ($(date -u +%F))"
+          git push origin HEAD:claude/us-stock-investment-ai-f35k6j

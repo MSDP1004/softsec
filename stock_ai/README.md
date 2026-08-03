@@ -22,8 +22,9 @@
 ```
 stock_ai/
 ├── config/
-│   ├── taxonomy.yaml         # AI/기술 밸류체인 노드 정의 (고정 목록 아님, 계속 갱신 대상)
-│   └── model_weights.json    # horizon별(1d/1w/1m/1y) 기대수익률 모델 가중치
+│   ├── taxonomy.yaml            # AI/기술 밸류체인 노드 정의 (고정 목록 아님, 계속 갱신 대상)
+│   ├── model_weights.json       # horizon별(1d/1w/1m/1y) 기대수익률 모델 가중치
+│   └── candidate_features.yaml  # 섀도우 피처 후보 상태 (proposed/shadow/승격/기각)
 ├── src/
 │   ├── data_fetcher.py      # yfinance로 가격/재무 스냅샷 수집
 │   ├── quality_filter.py    # 매출/이익 없는 기업 제외
@@ -35,11 +36,16 @@ stock_ai/
 │   ├── calibration.py       # 실현수익률에 대한 Elastic Net(자동 피처 선택) 가중치 재적합
 │   ├── backtest.py          # 예측 기록 / 만기 판정 / 실현수익률 평가
 │   ├── universe.py          # 노드별 PEG 최저 상위 N종목 추적 유니버스 선정
-│   └── daily.py             # 일일 오케스트레이션: 예측→평가→재적합→요약
+│   ├── shadow_features.py   # 섀도우 피처 계산 레지스트리 (실거래 모델엔 미반영)
+│   ├── shadow_backtest.py   # 섀도우 피처 값 기록
+│   ├── feature_research.py  # LLM 기반 신규 후보 피처 리서치 (월 1회 권장)
+│   ├── shadow_evaluation.py # 섀도우 피처가 실제로 도움되는지 통계적으로 검증
+│   └── daily.py             # 일일 오케스트레이션: 예측→평가→재적합→요약(+섀도우 기록)
 ├── data/
 │   ├── history/               # 매 `run` 실행 결과가 누적되는 valuation_history.csv
 │   ├── predictions.csv        # 매일 기록되는 종목별·horizon별 예측
 │   ├── evaluations.csv        # 만기 도달해 실제 수익률과 비교 완료된 예측
+│   ├── shadow_predictions.csv # 섀도우 피처 값 (실거래 예측식에는 영향 없음)
 │   └── daily_summary.md       # 가장 최근 `daily` 실행 요약
 ├── tests/                     # 네트워크 없이 도는 오프라인 단위/통합 테스트
 └── main.py                    # CLI 진입점
@@ -86,6 +92,12 @@ python main.py apply-taxonomy
 
 # 4. 일일 예측/평가/재적합 (GitHub Actions가 평일마다 자동 실행)
 python main.py daily
+
+# 5. (선택) LLM으로 새 후보 피처 리서치 — 월 1회 권장, ANTHROPIC_API_KEY 필요
+python main.py research-features
+
+# 6. 섀도우 피처가 실제로 도움되는지 통계 검증 — API 키 불필요, GitHub Actions가 월 1회 자동 실행
+python main.py evaluate-shadow-features
 ```
 
 `run`을 실행할 때마다 `data/history/valuation_history.csv`에 그날의 노드별 밸류에이션이
@@ -153,6 +165,44 @@ coordinate descent로 직접 구현, `calibration.py`)으로 돌려서, 예측�
 신호가 거의 없을 가능성이 높다** — 이 시스템은 "맞는 예측"을 보장하는 게 아니라, 그 사실 자체를
 정직하게 데이터로 보여주기 위해 만들었다. 1년 예측은 신호가 있을 가능성이 더 높지만, 표본이
 쌓이려면 실제로 여러 해가 걸린다.
+
+## 섀도우 피처 파이프라인 — 새 피처를 안전하게 추가하는 방법
+
+"매일 인터넷/논문을 찾아서 피처를 추가·제외하자"는 아이디어에서 출발했지만, 매일 피처
+구성 자체를 바꾸면 모델이 계속 리셋되고, "논문에 나온 팩터"를 검증 없이 바로 실거래 모델에
+넣으면 다중검정(multiple testing) 문제에 빠지기 쉽다. 그래서 리서치와 실제 모델 반영 사이에
+**섀도우 단계**를 뒀다.
+
+```
+LLM 리서치 (월 1회)          사람이 구현            매일 값만 기록           통계 검증 (월 1회)
+candidate_features.yaml  →  shadow_features.py  →  shadow_predictions.csv  →  evaluate-shadow-features
+     status: proposed          status: shadow                                  → 승격 or 기각
+```
+
+1. **`python main.py research-features`** (월 1회 권장, `ANTHROPIC_API_KEY` 필요) — Claude가
+   이미 쓰는 6개 피처와 겹치지 않고, 무료 데이터로 계산 가능하고, 학술적 근거가 있는 새 후보를
+   2~4개 제안한다. `config/candidate_features.yaml`에 `status: proposed`로만 기록되고 아무것도
+   자동 반영되지 않는다.
+2. 사람(또는 나에게 요청)이 제안을 검토하고, 계산 로직을 `src/shadow_features.py`의
+   `SHADOW_FEATURE_REGISTRY`에 구현한 뒤 status를 `shadow`로 바꾼다.
+3. `shadow` 상태인 피처는 `daily` 실행 때마다 값만 `data/shadow_predictions.csv`에 기록된다 —
+   `predictor.py`의 실제 예측식(FEATURE_NAMES)에는 전혀 관여하지 않는다.
+4. **`python main.py evaluate-shadow-features`** (월 1회, API 키 불필요) — 섀도우 피처 값을
+   `predictions.csv`(기존 6개 피처), `evaluations.csv`(실현수익률)와 join해서, "기존 피처만 쓴
+   Elastic Net"과 "섀도우 피처를 추가한 Elastic Net"의 **교차검증 MSE를 직접 비교**한다.
+   - 어느 horizon에서든 유의미하게(2% 이상) 개선되면 → `recommended_for_promotion`
+   - 표본이 충분한 horizon이 2개 이상인데 전부 개선이 없으면 → `rejected`
+   - 아직 표본이 부족하면 → `shadow` 상태 유지, 계속 데이터만 쌓음
+5. `recommended_for_promotion`이 뜨면, 그때 사람이 `predictor.FEATURE_NAMES`에 정식으로
+   추가한다 (스키마가 바뀌므로 가중치 리셋이 필요 — momentum 피처 추가 때와 동일한 절차).
+
+지금 시드로 넣어둔 섀도우 피처 2개:
+- `analyst_upside` — 애널리스트 목표주가 컨센서스 대비 상승여력
+- `week52_position` — 52주 최저~최고 구간 내 현재가 위치 (George & Hwang 2004, 52-week high momentum)
+
+`python main.py research-features`를 GitHub Actions에서 자동 실행하려면 저장소 Settings →
+Secrets and variables → Actions에 `ANTHROPIC_API_KEY`를 추가해야 한다. 없어도
+`evaluate-shadow-features`(통계 검증)는 매달 자동으로 계속 돈다.
 
 ## 한계 및 주의사항
 

@@ -21,6 +21,9 @@ class TickerSnapshot:
     price: float | None = None
     momentum_5d: float | None = None
     momentum_21d: float | None = None
+    analyst_target_mean: float | None = None
+    week52_low: float | None = None
+    week52_high: float | None = None
 
 
 def fetch_momentum(ticker: str) -> tuple[float | None, float | None]:
@@ -73,6 +76,9 @@ def fetch_snapshot(ticker: str) -> TickerSnapshot | None:
         price=info.get("currentPrice") or info.get("regularMarketPrice"),
         momentum_5d=momentum_5d,
         momentum_21d=momentum_21d,
+        analyst_target_mean=info.get("targetMeanPrice"),
+        week52_low=info.get("fiftyTwoWeekLow"),
+        week52_high=info.get("fiftyTwoWeekHigh"),
     )
 
 

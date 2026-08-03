@@ -28,6 +28,24 @@ def _make_snapshot(ticker: str, price: float) -> TickerSnapshot:
         return_on_equity=0.15,
         market_cap=10_000_000_000,
         price=price,
+        analyst_target_mean=price * 1.1,  # 섀도우 피처(analyst_upside) 계산용
+    )
+
+
+def _write_candidate_features(path: Path) -> None:
+    path.write_text(
+        """
+candidates:
+  - id: analyst_upside
+    name: "테스트용 섀도우 피처"
+    description: "targetMeanPrice/price - 1"
+    rationale: "test"
+    status: shadow
+    source: test
+    proposed_date: "2026-01-01"
+research_history: []
+""",
+        encoding="utf-8",
     )
 
 
@@ -58,6 +76,9 @@ def test_predict_then_evaluate_cycle_across_two_days(tmp_path: Path, monkeypatch
     predictions_path = tmp_path / "predictions.csv"
     evaluations_path = tmp_path / "evaluations.csv"
     summary_path = tmp_path / "summary.md"
+    candidate_features_path = tmp_path / "candidate_features.yaml"
+    shadow_predictions_path = tmp_path / "shadow_predictions.csv"
+    _write_candidate_features(candidate_features_path)
 
     prices = {"AAA": 100.0, "BBB": 100.0}
 
@@ -75,11 +96,19 @@ def test_predict_then_evaluate_cycle_across_two_days(tmp_path: Path, monkeypatch
         predictions_path=predictions_path,
         evaluations_path=evaluations_path,
         summary_path=summary_path,
+        candidate_features_path=candidate_features_path,
+        shadow_predictions_path=shadow_predictions_path,
     )
 
     assert result0.n_tracked == 2
     assert result0.n_predictions_logged == 8  # 2 tickers x 4 horizons
     assert result0.n_evaluated == 0  # 아직 어떤 horizon도 만기 전
+    assert result0.n_shadow_values_logged == 8  # 2 tickers x 4 horizons, shadow 피처 1개
+
+    shadow_rows = read_csv_rows(shadow_predictions_path)
+    assert len(shadow_rows) == 8
+    assert all(r["feature_id"] == "analyst_upside" for r in shadow_rows)
+    assert abs(float(shadow_rows[0]["value"]) - 0.1) < 1e-9  # target=price*1.1 -> upside 10%
 
     # 다음 날: AAA는 +1%, BBB는 -1%
     prices["AAA"] = 101.0
@@ -94,6 +123,8 @@ def test_predict_then_evaluate_cycle_across_two_days(tmp_path: Path, monkeypatch
         predictions_path=predictions_path,
         evaluations_path=evaluations_path,
         summary_path=summary_path,
+        candidate_features_path=candidate_features_path,
+        shadow_predictions_path=shadow_predictions_path,
     )
 
     assert result1.n_predictions_logged == 8  # 그 날 또 새 예측 8건

@@ -16,8 +16,11 @@ from .backtest import (
 )
 from .calibration import calibrate_horizon
 from .data_fetcher import fetch_snapshots
+from .feature_research import load_candidates
 from .predictor import HORIZONS, feature_vector, load_weights, save_weights
 from .quality_filter import QualityThresholds, filter_snapshots
+from .shadow_backtest import append_shadow_rows, build_shadow_rows
+from .shadow_features import compute_shadow_values
 from .taxonomy_manager import load_taxonomy
 from .universe import select_top_n_per_node
 from .valuation import compute_node_valuation, score_undervaluation
@@ -25,8 +28,10 @@ from .valuation import compute_node_valuation, score_undervaluation
 BASE_DIR = Path(__file__).resolve().parent.parent
 TAXONOMY_PATH = BASE_DIR / "config" / "taxonomy.yaml"
 WEIGHTS_PATH = BASE_DIR / "config" / "model_weights.json"
+CANDIDATE_FEATURES_PATH = BASE_DIR / "config" / "candidate_features.yaml"
 PREDICTIONS_PATH = BASE_DIR / "data" / "predictions.csv"
 EVALUATIONS_PATH = BASE_DIR / "data" / "evaluations.csv"
+SHADOW_PREDICTIONS_PATH = BASE_DIR / "data" / "shadow_predictions.csv"
 SUMMARY_PATH = BASE_DIR / "data" / "daily_summary.md"
 
 # horizon별 재적합 최소 표본 수. 1일/1주는 노이즈가 커서 표본을 더 많이 요구한다.
@@ -42,6 +47,7 @@ class DailyResult:
     calibrated_horizons: list[str]
     eval_summary: dict[str, dict] = field(default_factory=dict)
     active_features: dict[str, list[str]] = field(default_factory=dict)
+    n_shadow_values_logged: int = 0
 
 
 def run_daily(
@@ -52,6 +58,8 @@ def run_daily(
     predictions_path: Path = PREDICTIONS_PATH,
     evaluations_path: Path = EVALUATIONS_PATH,
     summary_path: Path = SUMMARY_PATH,
+    candidate_features_path: Path = CANDIDATE_FEATURES_PATH,
+    shadow_predictions_path: Path = SHADOW_PREDICTIONS_PATH,
 ) -> DailyResult:
     today = today or date.today()
 
@@ -69,8 +77,11 @@ def run_daily(
     tracked = select_top_n_per_node(node_valuations, quality_by_node, top_n=top_n_per_node)
 
     model = load_weights(weights_path)
+    candidates = load_candidates(candidate_features_path)
+    shadow_ids = {c["id"] for c in candidates.candidates if c.get("status") == "shadow"}
 
     new_predictions = []
+    new_shadow_rows = []
     for t in tracked:
         if t.snapshot.price is None:
             continue
@@ -85,7 +96,13 @@ def run_daily(
         new_predictions.extend(
             build_predictions(today, t.ticker, t.node_id, t.snapshot.price, features, model)
         )
+
+        if shadow_ids:
+            shadow_values = compute_shadow_values(t.snapshot, shadow_ids)
+            new_shadow_rows.extend(build_shadow_rows(today, t.ticker, t.node_id, shadow_values))
     append_predictions(new_predictions, predictions_path)
+    if new_shadow_rows:
+        append_shadow_rows(new_shadow_rows, shadow_predictions_path)
 
     matured = find_matured_predictions(predictions_path, evaluations_path, today)
     matured_tickers = sorted({row["ticker"] for row in matured})
@@ -132,6 +149,7 @@ def run_daily(
         calibrated_horizons=calibrated_horizons,
         eval_summary=eval_summary,
         active_features=active_features,
+        n_shadow_values_logged=len(new_shadow_rows),
     )
     write_summary(result, today, summary_path)
     return result
@@ -142,6 +160,8 @@ def write_summary(result: DailyResult, today: date, summary_path: Path) -> None:
     lines.append(f"- 추적 종목: {result.n_tracked}개")
     lines.append(f"- 오늘 새로 기록한 예측: {result.n_predictions_logged}건")
     lines.append(f"- 오늘 만기 도달해 평가된 예측: {result.n_evaluated}건")
+    if result.n_shadow_values_logged:
+        lines.append(f"- 섀도우 피처(검증 대기 중, 실거래 예측식에는 미반영) 값 기록: {result.n_shadow_values_logged}건")
     if result.calibrated_horizons:
         lines.append(f"- 가중치 재적합됨: {', '.join(result.calibrated_horizons)}")
     else:
