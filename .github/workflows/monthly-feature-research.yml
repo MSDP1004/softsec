@@ -50,5 +50,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add config/candidate_features.yaml
-          git diff --cached --quiet || git commit -m "Monthly feature research/evaluation update ($(date -u +%F))"
-          git push origin HEAD:claude/us-stock-investment-ai-f35k6j
+          git diff --cached --quiet && exit 0
+          git commit -m "Monthly feature research/evaluation update ($(date -u +%F))"
+
+          for i in 1 2 3 4 5; do
+            if git push origin HEAD:claude/us-stock-investment-ai-f35k6j; then
+              exit 0
+            fi
+            echo "push rejected (likely a race with another workflow), rebasing and retrying ($i)..."
+            git fetch origin claude/us-stock-investment-ai-f35k6j
+            git rebase origin/claude/us-stock-investment-ai-f35k6j
+            sleep $((i * 3))
+          done
+          echo "::error::failed to push after retries"
+          exit 1

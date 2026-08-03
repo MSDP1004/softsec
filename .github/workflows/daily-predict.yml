@@ -39,6 +39,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/predictions.csv data/evaluations.csv data/daily_summary.md config/model_weights.json
-          git diff --cached --quiet || git commit -m "Daily prediction/evaluation update ($(date -u +%F))"
-          git push origin HEAD:claude/us-stock-investment-ai-f35k6j
+          git add data/predictions.csv data/evaluations.csv data/shadow_predictions.csv data/daily_summary.md config/model_weights.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Daily prediction/evaluation update ($(date -u +%F))"
+
+          for i in 1 2 3 4 5; do
+            if git push origin HEAD:claude/us-stock-investment-ai-f35k6j; then
+              exit 0
+            fi
+            echo "push rejected (likely a race with another workflow), rebasing and retrying ($i)..."
+            git fetch origin claude/us-stock-investment-ai-f35k6j
+            git rebase origin/claude/us-stock-investment-ai-f35k6j
+            sleep $((i * 3))
+          done
+          echo "::error::failed to push after retries"
+          exit 1
