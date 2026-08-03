@@ -15,7 +15,9 @@ from src.predictor import ModelWeights
 def test_build_predictions_creates_one_row_per_horizon_with_correct_target_dates():
     model = ModelWeights()
     today = date(2026, 1, 1)
-    preds = build_predictions(today, "AAA", "node1", entry_price=100.0, features=[0.5, 0.1, 0.1, 1.0], model=model)
+    preds = build_predictions(
+        today, "AAA", "node1", entry_price=100.0, features=[0.5, 0.1, 0.1, 1.0, 0.02, -0.01], model=model
+    )
 
     by_horizon = {p.horizon: p for p in preds}
     assert by_horizon["1d"].target_date == "2026-01-02"
@@ -28,7 +30,7 @@ def test_build_predictions_creates_one_row_per_horizon_with_correct_target_dates
 def test_append_and_read_predictions_roundtrip(tmp_path: Path):
     model = ModelWeights()
     today = date(2026, 1, 1)
-    preds = build_predictions(today, "AAA", "node1", 100.0, [0.5, 0.1, 0.1, 1.0], model)
+    preds = build_predictions(today, "AAA", "node1", 100.0, [0.5, 0.1, 0.1, 1.0, 0.02, -0.01], model)
 
     path = tmp_path / "predictions.csv"
     append_predictions(preds, path)
@@ -41,7 +43,7 @@ def test_append_and_read_predictions_roundtrip(tmp_path: Path):
 
 def test_find_matured_predictions_filters_by_target_date_and_evaluated_status(tmp_path: Path):
     model = ModelWeights()
-    preds = build_predictions(date(2026, 1, 1), "AAA", "node1", 100.0, [0.5, 0.1, 0.1, 1.0], model)
+    preds = build_predictions(date(2026, 1, 1), "AAA", "node1", 100.0, [0.5, 0.1, 0.1, 1.0, 0.02, -0.01], model)
     pred_path = tmp_path / "predictions.csv"
     eval_path = tmp_path / "evaluations.csv"
     append_predictions(preds, pred_path)

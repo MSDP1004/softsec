@@ -19,6 +19,29 @@ class TickerSnapshot:
     return_on_equity: float | None
     market_cap: float | None
     price: float | None = None
+    momentum_5d: float | None = None
+    momentum_21d: float | None = None
+
+
+def fetch_momentum(ticker: str) -> tuple[float | None, float | None]:
+    """최근 5거래일/21거래일(약 1주/1개월) 수익률. 재무지표와 달리 매일 바뀐다."""
+    import yfinance as yf
+
+    try:
+        hist = yf.Ticker(ticker).history(period="2mo")
+    except Exception:
+        return None, None
+
+    if hist is None or hist.empty or "Close" not in hist:
+        return None, None
+
+    closes = hist["Close"].dropna()
+    if len(closes) < 6:
+        return None, None
+
+    r5 = float(closes.iloc[-1] / closes.iloc[-6] - 1)
+    r21 = float(closes.iloc[-1] / closes.iloc[-22] - 1) if len(closes) >= 22 else None
+    return r5, r21
 
 
 def fetch_snapshot(ticker: str) -> TickerSnapshot | None:
@@ -33,6 +56,8 @@ def fetch_snapshot(ticker: str) -> TickerSnapshot | None:
     if not info or info.get("regularMarketPrice") is None and info.get("currentPrice") is None:
         return None
 
+    momentum_5d, momentum_21d = fetch_momentum(ticker)
+
     return TickerSnapshot(
         ticker=ticker,
         trailing_pe=info.get("trailingPE"),
@@ -46,6 +71,8 @@ def fetch_snapshot(ticker: str) -> TickerSnapshot | None:
         return_on_equity=info.get("returnOnEquity"),
         market_cap=info.get("marketCap"),
         price=info.get("currentPrice") or info.get("regularMarketPrice"),
+        momentum_5d=momentum_5d,
+        momentum_21d=momentum_21d,
     )
 
 

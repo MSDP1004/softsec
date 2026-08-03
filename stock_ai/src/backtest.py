@@ -25,6 +25,8 @@ PREDICTION_COLUMNS = [
     "x2",
     "x3",
     "x4",
+    "x5",
+    "x6",
     "predicted_return",
 ]
 
@@ -54,6 +56,8 @@ class Prediction:
     x2: float
     x3: float
     x4: float
+    x5: float
+    x6: float
     predicted_return: float
 
 
@@ -81,6 +85,8 @@ def build_predictions(
                 x2=features[1],
                 x3=features[2],
                 x4=features[3],
+                x5=features[4],
+                x6=features[5],
                 predicted_return=predicted_return,
             )
         )
@@ -107,6 +113,8 @@ def append_predictions(predictions: list[Prediction], path: Path) -> None:
                     "x2": p.x2,
                     "x3": p.x3,
                     "x4": p.x4,
+                    "x5": p.x5,
+                    "x6": p.x6,
                     "predicted_return": p.predicted_return,
                 }
             )

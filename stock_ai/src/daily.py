@@ -30,7 +30,8 @@ EVALUATIONS_PATH = BASE_DIR / "data" / "evaluations.csv"
 SUMMARY_PATH = BASE_DIR / "data" / "daily_summary.md"
 
 # horizon별 재적합 최소 표본 수. 1일/1주는 노이즈가 커서 표본을 더 많이 요구한다.
-MIN_SAMPLES = {"1d": 30, "1w": 20, "1m": 15, "1y": 10}
+# 피처가 4개->6개로 늘면서 추정할 파라미터가 늘어난 만큼 기준도 함께 올렸다.
+MIN_SAMPLES = {"1d": 40, "1w": 30, "1m": 25, "1y": 15}
 
 
 @dataclass
@@ -77,6 +78,8 @@ def run_daily(
             t.snapshot.revenue_growth,
             t.snapshot.profit_margin,
             t.snapshot.peg_ratio,
+            t.snapshot.momentum_5d,
+            t.snapshot.momentum_21d,
         )
         new_predictions.extend(
             build_predictions(today, t.ticker, t.node_id, t.snapshot.price, features, model)
@@ -106,7 +109,10 @@ def run_daily(
                 "direction_hit_rate": hits / len(rows),
             }
         if len(rows) >= MIN_SAMPLES[horizon]:
-            features = [[float(r["x1"]), float(r["x2"]), float(r["x3"]), float(r["x4"])] for r in rows]
+            features = [
+                [float(r["x1"]), float(r["x2"]), float(r["x3"]), float(r["x4"]), float(r["x5"]), float(r["x6"])]
+                for r in rows
+            ]
             targets = [float(r["realized_return"]) for r in rows]
             if calibrate_horizon(model, horizon, features, targets, min_samples=MIN_SAMPLES[horizon]):
                 calibrated_horizons.append(horizon)
