@@ -1,32 +1,16 @@
-# 섀도우 피처 후보 관리 파일.
-#
-# status:
-#   proposed  - LLM/사람이 제안만 한 상태. 계산 함수 미구현, 값 기록 안 됨.
-#   shadow    - src/shadow_features.py에 계산 함수 구현 완료, 매일 값만 기록 중
-#               (실거래 예측식에는 아직 영향 없음).
-#   recommended_for_promotion - evaluate-shadow-features가 기존 피처 대비
-#               유의미한 개선을 확인. 사람이 predictor.py에 정식 반영해야 함.
-#   rejected  - 표본이 충분히 쌓였는데도 개선이 없어 폐기.
-#
-# 이 파일은 `python main.py research-features`(LLM, 월 1회 권장)와
-# `python main.py evaluate-shadow-features`(통계적 검증, API 키 불필요)가
-# 갱신한다.
-
 candidates:
-  - id: analyst_upside
-    name: "애널리스트 목표주가 상승여력"
-    description: "targetMeanPrice / 현재가 - 1"
-    rationale: "애널리스트 추정치 개정(analyst revisions) 관련 팩터는 퀀트 문헌에서 꾸준히 다뤄지는 신호."
-    status: shadow
-    source: seed
-    proposed_date: "2026-08-03"
-
-  - id: week52_position
-    name: "52주 고저 구간 내 위치"
-    description: "(현재가 - 52주최저) / (52주최고 - 52주최저)"
-    rationale: "52-week high 근처 종목이 추가 상승하는 경향(George & Hwang 2004, 52-week high momentum)."
-    status: shadow
-    source: seed
-    proposed_date: "2026-08-03"
-
+- id: analyst_upside
+  name: 애널리스트 목표주가 상승여력
+  description: targetMeanPrice / 현재가 - 1
+  rationale: 애널리스트 추정치 개정(analyst revisions) 관련 팩터는 퀀트 문헌에서 꾸준히 다뤄지는 신호.
+  status: shadow
+  source: seed
+  proposed_date: '2026-08-03'
+- id: week52_position
+  name: 52주 고저 구간 내 위치
+  description: (현재가 - 52주최저) / (52주최고 - 52주최저)
+  rationale: 52-week high 근처 종목이 추가 상승하는 경향(George & Hwang 2004, 52-week high momentum).
+  status: shadow
+  source: seed
+  proposed_date: '2026-08-03'
 research_history: []
